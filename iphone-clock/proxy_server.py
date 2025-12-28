@@ -75,6 +75,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 content_type = 'application/json'
             elif file_path.endswith('.md'):
                 content_type = 'text/markdown'
+            elif file_path.endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif file_path.endswith('.svg'):
+                content_type = 'image/svg+xml'
             
             self.send_response(200)
             self.send_header('Content-Type', content_type)
@@ -230,4 +236,6 @@ def run(port=9001):
         httpd.server_close()
 
 if __name__ == '__main__':
-    run(9001)
+    # Render와 같은 클라우드 서비스에서 지정하는 PORT 환경 변수 사용, 없을 경우 9001 사용
+    port = int(os.environ.get('PORT', 9001))
+    run(port)
