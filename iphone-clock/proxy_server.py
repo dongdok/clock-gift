@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app)
 
 # 환경 변수 설정
-PUBLIC_DATA_SERVICE_KEY = os.environ.get('PUBLIC_DATA_SERVICE_KEY', 'f4a86db25a9ffd47dc132bd1b1b34d1234737d27189e261e821ca117d2d6e741')
+PUBLIC_DATA_SERVICE_KEY = os.environ.get('PUBLIC_DATA_SERVICE_KEY', '')
 NX = os.environ.get('NX', '60')
 NY = os.environ.get('NY', '127')
 STATION_NAME = os.environ.get('STATION_NAME', '종로구')
@@ -29,13 +29,16 @@ def proxy_weather():
         # 한국 시간(KST, UTC+9)으로 강제 변환
         now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
         
+        # 인증키 중복 인코딩 방지를 위해 unquote 처리
+        service_key = urllib.parse.unquote(PUBLIC_DATA_SERVICE_KEY)
+        
         # 1. 기상청 초단기실황 (현재 관측 기온, 습도)
         ncst_time = (now_kst - datetime.timedelta(minutes=40)).strftime('%H00')
         ncst_date = (now_kst - datetime.timedelta(minutes=40)).strftime('%Y%m%d')
         
         ncst_url = (
             f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"
-            f"?serviceKey={PUBLIC_DATA_SERVICE_KEY}&dataType=JSON&numOfRows=10&pageNo=1"
+            f"?serviceKey={service_key}&dataType=JSON&numOfRows=10&pageNo=1"
             f"&base_date={ncst_date}&base_time={ncst_time}&nx={NX}&ny={NY}"
         )
 
@@ -46,7 +49,7 @@ def proxy_weather():
         
         ultra_fcst_url = (
             f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
-            f"?serviceKey={PUBLIC_DATA_SERVICE_KEY}&dataType=JSON&numOfRows=60&pageNo=1"
+            f"?serviceKey={service_key}&dataType=JSON&numOfRows=60&pageNo=1"
             f"&base_date={ultra_fcst_date}&base_time={ultra_fcst_time}&nx={NX}&ny={NY}"
         )
 
@@ -64,7 +67,7 @@ def proxy_weather():
         
         fcst_url = (
             f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
-            f"?serviceKey={PUBLIC_DATA_SERVICE_KEY}&dataType=JSON&numOfRows=1000&pageNo=1"
+            f"?serviceKey={service_key}&dataType=JSON&numOfRows=1000&pageNo=1"
             f"&base_date={fcst_date}&base_time={fcst_time}&nx={NX}&ny={NY}"
         )
 
@@ -72,15 +75,21 @@ def proxy_weather():
         station_encoded = urllib.parse.quote(STATION_NAME)
         pollution_url = (
             f"http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty"
-            f"?serviceKey={PUBLIC_DATA_SERVICE_KEY}&returnType=json&numOfRows=1&pageNo=1"
+            f"?serviceKey={service_key}&returnType=json&numOfRows=1&pageNo=1"
             f"&stationName={station_encoded}&dataTerm=DAILY&ver=1.0"
         )
 
         def fetch_json(url):
             try:
-                print(f"DEBUG: Fetching {url[:60]}...")
+                print(f"DEBUG: Fetching {url[:80]}...")
+                # requests.get에 url 직접 전달 시 인코딩 문제가 생길 수 있어 주의 필요
+                # KMA는 이미 인코딩된 키를 받으면 가끔 오류가 나므로 unquote된 키를 사용하는 것이 안전함
                 r = requests.get(url, timeout=5)
-                return r.json()
+                try:
+                    return r.json()
+                except:
+                    # JSON 파싱 실패 시 원문 에러 메시지 반환 (디버깅용)
+                    return {"error": "Invalid JSON", "content": r.text[:200]}
             except Exception as e:
                 return {"error": str(e)}
 
