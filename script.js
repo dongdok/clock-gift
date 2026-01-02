@@ -1,6 +1,7 @@
-// VERSION: 2.1 - Robust Weather Parsing
+// VERSION: 2.2 - Deployment Sync
 // DOM 로드 완료 후 초기화
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('--- iPhone Clock Script v2.2 Loaded ---');
     initClock();
 });
 
@@ -160,6 +161,23 @@ function updateWeatherUI(data) {
                 }
             }
         }
+    } catch (e) { }
+
+    // 5. 서버 버전 확인 (Debug)
+    try {
+        let verEl = document.getElementById('debug-version');
+        if (!verEl) {
+            verEl = document.createElement('div');
+            verEl.id = 'debug-version';
+            verEl.style.position = 'fixed';
+            verEl.style.bottom = '10px';
+            verEl.style.right = '10px';
+            verEl.style.fontSize = '10px';
+            verEl.style.color = 'rgba(255,255,255,0.3)';
+            verEl.style.zIndex = '9999';
+            document.body.appendChild(verEl);
+        }
+        verEl.textContent = `JS: v2.2 | API: ${data.version || 'old'}`;
     } catch (e) { }
 }
 

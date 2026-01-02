@@ -163,6 +163,7 @@ def proxy_weather():
 
         # 업데이트된 데이터로 캐시 갱신
         weather_cache = new_data
+        weather_cache['version'] = '2.2-stable' # 서버 버전 추적용
         last_cache_time = datetime.datetime.now()
         save_cache() # 파일에 저장
         print("> iPhone: 날씨 데이터 통합 캐시 업데이트 완료")
