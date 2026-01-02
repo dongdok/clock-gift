@@ -94,8 +94,8 @@ function initWeather() {
     // 최초 실행
     fetchWeather();
 
-    // 15분마다 날씨 업데이트
-    setInterval(fetchWeather, 15 * 60 * 1000);
+    // 1시간마다 날씨 업데이트 (API 호출 최소화)
+    setInterval(fetchWeather, 60 * 60 * 1000);
 }
 
 /**

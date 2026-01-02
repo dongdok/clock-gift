@@ -22,9 +22,24 @@ def index():
 def serve_static(path):
     return send_from_directory('.', path)
 
+
+# 날씨 데이터 캐싱을 위한 전역 변수
+weather_cache = None
+last_cache_time = None
+
 @app.route('/api/weather')
 def proxy_weather():
     """기상청 및 에어코리아 API를 프록시합니다."""
+    global weather_cache, last_cache_time
+    
+    # 캐시 유효 시간 (1시간 - API 호출 최소화)
+    CACHE_DURATION = datetime.timedelta(minutes=60)
+    
+    # 캐시된 데이터가 있고 유효하다면 바로 반환
+    if weather_cache and last_cache_time and (datetime.datetime.now() - last_cache_time < CACHE_DURATION):
+        print(f"> 캐시된 날씨 데이터 반환 (Updated: {last_cache_time.strftime('%H:%M:%S')})")
+        return jsonify(weather_cache)
+
     try:
         # 한국 시간(KST, UTC+9)으로 강제 변환
         now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
@@ -53,17 +68,15 @@ def proxy_weather():
             f"&base_date={ultra_fcst_date}&base_time={ultra_fcst_time}&nx={NX}&ny={NY}"
         )
 
-        # 3. 기상청 단기예보 (오늘의 최고/최저 기온)
-        fcst_base_hours = [2, 5, 8, 11, 14, 17, 20, 23]
-        current_hour = now_kst.hour
-        if current_hour < 2:
+        # 3. 기상청 단기예보 (오늘의 최고/최저 기온 확보용)
+        # 오늘 전체의 최고/최저 기온은 0200시 발표 데이터에만 포함되어 있습니다.
+        if now_kst.hour < 2:
+            # 새벽 2시 이전이면 전날 23시 데이터 사용
             fcst_dt = now_kst - datetime.timedelta(days=1)
-            fcst_date = fcst_dt.strftime('%Y%m%d')
-            fcst_time = "2300"
+            fcst_date, fcst_time = fcst_dt.strftime('%Y%m%d'), "2300"
         else:
-            base_h = max([h for h in fcst_base_hours if h <= current_hour])
-            fcst_date = now_kst.strftime('%Y%m%d')
-            fcst_time = f"{base_h:02d}00"
+            # 그 외에는 오늘 0200시 데이터를 가져와야 오늘 전체의 최저/최고 기온이 나옵니다.
+            fcst_date, fcst_time = now_kst.strftime('%Y%m%d'), "0200"
         
         fcst_url = (
             f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
@@ -93,12 +106,21 @@ def proxy_weather():
             except Exception as e:
                 return {"error": str(e)}
 
-        return jsonify({
+        data = {
             'ncst': fetch_json(ncst_url),
             'ultra_fcst': fetch_json(ultra_fcst_url),
             'fcst': fetch_json(fcst_url),
             'pollution': fetch_json(pollution_url)
-        })
+        }
+
+        # 유효한 데이터가 하나라도 있고 에러가 없다면 캐시 업데이트
+        # 간단히 ncst나 fcst가 error 키를 가지고 있지 않은지로 판단
+        if not data['ncst'].get('error') or not data['fcst'].get('error'):
+             weather_cache = data
+             last_cache_time = datetime.datetime.now()
+             print("> 날씨 캐시 업데이트 성공")
+
+        return jsonify(data)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
