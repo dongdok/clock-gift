@@ -256,6 +256,8 @@ function updateWeatherUI(data) {
             }
         }
 
+        const dustEl = document.getElementById('fine-dust');
+
         if (dustEl) {
             dustEl.textContent = `미세먼지 ${dustStatus}`;
             dustEl.style.color = dustColor;
