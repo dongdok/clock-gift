@@ -150,7 +150,7 @@ function updateWeatherUI(data) {
                 currentTemp = Math.round(ncstObj['T1H']);
                 document.getElementById('current-temp').textContent = `${currentTemp}°`;
             }
-            if (ncstObj['REH']) {
+            if (ncstObj['REH'] !== undefined) {
                 const humidity = ncstObj['REH'];
                 document.getElementById('humidity').textContent = `습도 ${humidity}%`;
             }
@@ -163,7 +163,11 @@ function updateWeatherUI(data) {
             const ultraItems = ultra_fcst.response.body.items.item;
 
             // 현재 시각에 가장 가까운 예보 데이터 찾기
-            const currentUltra = ultraItems.filter(item => item.fcstTime === currentHourStr);
+            const currentUltra = ultraItems
+                .filter(item => item.fcstDate === todayStr)
+                .sort((a, b) => Math.abs(a.fcstTime - currentHourStr) - Math.abs(b.fcstTime - currentHourStr))
+                .slice(0, 10);
+
 
             if (currentUltra.length > 0) {
                 const ultraObj = {};
@@ -200,10 +204,9 @@ function updateWeatherUI(data) {
             let tmx = '--'; // 최고
 
             fcstItems.forEach(item => {
-                if (item.fcstDate === todayStr) {
-                    if (item.category === 'TMN') tmn = Math.round(item.fcstValue);
-                    if (item.category === 'TMX') tmx = Math.round(item.fcstValue);
-                }
+                if (item.category === 'TMN') tmn = Math.round(item.fcstValue);
+                if (item.category === 'TMX') tmx = Math.round(item.fcstValue);
+
             });
 
             const minMaxEl = document.getElementById('min-max-temp');
@@ -233,11 +236,14 @@ function updateWeatherUI(data) {
 
             const statusEl = document.getElementById('weather-status');
             if (statusEl && finalStatus) statusEl.textContent = finalStatus;
+            if (statusEl && !finalStatus) statusEl.textContent = '--';
         }
 
         // 3. 에어코리아 데이터 파싱 및 색상 적용
         let dustStatus = '정보없음';
         let dustColor = '#2d5016'; // 기본 포레스트 그린
+
+        const dustEl = document.getElementById('fine-dust');
 
         if (pollution && pollution.response && pollution.response.body && pollution.response.body.items && pollution.response.body.items.length > 0) {
             const pollutionItem = pollution.response.body.items[0];
@@ -250,13 +256,13 @@ function updateWeatherUI(data) {
                 '4': { status: '매우나쁨', color: '#e74c3c' }
             };
 
-            if (gradeMap[pm10Grade]) {
+            if (!pm10Grade || pm10Grade === '-') {
+                if (dustEl) dustEl.textContent = '미세먼지 정보없음';
+            } else if (gradeMap[pm10Grade]) {
                 dustStatus = gradeMap[pm10Grade].status;
                 dustColor = gradeMap[pm10Grade].color;
             }
         }
-
-        const dustEl = document.getElementById('fine-dust');
 
         if (dustEl) {
             dustEl.textContent = `미세먼지 ${dustStatus}`;
