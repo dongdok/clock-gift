@@ -123,10 +123,11 @@ async function fetchWeather() {
  * 날씨 UI 업데이트 (기상청/에어코리아 버전)
  */
 function updateWeatherUI(data) {
+    if (!data) return;
     const { ncst, fcst, ultra_fcst, pollution } = data;
 
     try {
-        // 현재 시간 정보 (KST 기준 비교를 위해)
+        // 현재 시간 정보 (브라우저 현재 시간 기준)
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -139,149 +140,121 @@ function updateWeatherUI(data) {
         let currentTemp = null;
         let pty = '0';
 
-        if (ncst && ncst.response && ncst.response.body && ncst.response.body.items) {
-            const ncstItems = ncst.response.body.items.item;
+        if (ncst && ncst.response && ncst.response.body && ncst.response.body.items && ncst.response.body.items.item) {
+            const items = Array.isArray(ncst.response.body.items.item)
+                ? ncst.response.body.items.item
+                : [ncst.response.body.items.item];
+
             const ncstObj = {};
-            ncstItems.forEach(item => {
+            items.forEach(item => {
                 ncstObj[item.category] = item.obsrValue;
             });
 
             if (ncstObj['T1H']) {
-                currentTemp = Math.round(ncstObj['T1H']);
+                currentTemp = Math.round(parseFloat(ncstObj['T1H']));
                 document.getElementById('current-temp').textContent = `${currentTemp}°`;
             }
-            if (ncstObj['REH'] !== undefined && ncstObj['REH'] !== null) {
-                const humidity = Math.round(ncstObj['REH']);
+            if (ncstObj['REH']) {
+                const humidity = Math.round(parseFloat(ncstObj['REH']));
                 document.getElementById('humidity').textContent = `습도 ${humidity}%`;
-            } else {
-                document.getElementById('humidity').textContent = `습도 --%`;
             }
             pty = ncstObj['PTY'] || '0';
-        } else {
-            // ncst 데이터가 없을 경우 기본값 표시
-            document.getElementById('humidity').textContent = `습도 --%`;
         }
 
-        // 2. 초단기예보 (UltraSrtFcst) - 실황이 없거나 보완이 필요할 때 사용
+        // 2. 초단기예보 (UltraSrtFcst)
         let ultraStatusText = null;
-        if (ultra_fcst && ultra_fcst.response && ultra_fcst.response.body && ultra_fcst.response.body.items) {
-            const ultraItems = ultra_fcst.response.body.items.item;
+        if (ultra_fcst && ultra_fcst.response && ultra_fcst.response.body && ultra_fcst.response.body.items && ultra_fcst.response.body.items.item) {
+            const items = Array.isArray(ultra_fcst.response.body.items.item)
+                ? ultra_fcst.response.body.items.item
+                : [ultra_fcst.response.body.items.item];
 
-            // 현재 시각에 가장 가까운 예보 데이터 찾기
-            const currentUltra = ultraItems
-                .filter(item => item.fcstDate === todayStr)
-                .sort((a, b) => Math.abs(a.fcstTime - currentHourStr) - Math.abs(b.fcstTime - currentHourStr))
-                .slice(0, 10);
+            // 현재 시각에 가장 가까운 예보 찾기
+            const currentItem = items
+                .filter(i => i.fcstDate === todayStr)
+                .sort((a, b) => Math.abs(parseInt(a.fcstTime) - parseInt(currentHourStr)) - Math.abs(parseInt(b.fcstTime) - parseInt(currentHourStr)))[0];
 
-
-            if (currentUltra.length > 0) {
+            if (currentItem) {
+                // 특정 시간대의 모든 카테고리 기온 모으기 (T1H, SKY, PTY)
+                const targetTime = currentItem.fcstTime;
                 const ultraObj = {};
-                currentUltra.forEach(item => {
-                    ultraObj[item.category] = item.fcstValue;
+                items.filter(i => i.fcstTime === targetTime).forEach(i => {
+                    ultraObj[i.category] = i.fcstValue;
                 });
 
-                // 실황 기온이 없을 경우 초단기예보 기온 사용
                 if (currentTemp === null && ultraObj['T1H']) {
-                    currentTemp = Math.round(ultraObj['T1H']);
+                    currentTemp = Math.round(parseFloat(ultraObj['T1H']));
                     document.getElementById('current-temp').textContent = `${currentTemp}°`;
                 }
 
-                // 하늘 상태 (SKY) 및 강수 형태 (PTY) 기반 상태 텍스트
-                const ultraPty = ultraObj['PTY'] || '0';
-                const ultraSky = ultraObj['SKY'] || '1';
-
-                if (ultraPty === '0') {
-                    if (ultraSky === '1') ultraStatusText = '맑음';
-                    else if (ultraSky === '3') ultraStatusText = '구름많음';
+                const uPty = ultraObj['PTY'] || '0';
+                const uSky = ultraObj['SKY'] || '1';
+                if (uPty === '0') {
+                    if (uSky === '1') ultraStatusText = '맑음';
+                    else if (uSky === '3') ultraStatusText = '구름많음';
                     else ultraStatusText = '흐림';
                 } else {
                     const ptyMap = { '1': '비', '2': '비/눈', '3': '눈', '4': '소나기', '5': '빗방울', '6': '진눈깨비', '7': '눈날림' };
-                    ultraStatusText = ptyMap[ultraPty] || '강수';
+                    ultraStatusText = ptyMap[uPty] || '강수';
                 }
             }
         }
 
-        // 3. 단기예보 (VilageFcst) - 최고/최저 기온 및 날씨 흐름
-        if (fcst && fcst.response && fcst.response.body && fcst.response.body.items) {
-            const fcstItems = fcst.response.body.items.item;
+        // 3. 단기예보 (최고/최저 기온)
+        let tmn = '--';
+        let tmx = '--';
+        let fcstStatusText = null;
+        if (fcst && fcst.response && fcst.response.body && fcst.response.body.items && fcst.response.body.items.item) {
+            const items = Array.isArray(fcst.response.body.items.item)
+                ? fcst.response.body.items.item
+                : [fcst.response.body.items.item];
 
-            let tmn = '--'; // 최저
-            let tmx = '--'; // 최고
-
-            fcstItems.forEach(item => {
-                // 오늘 날짜의 TMN/TMX만 사용
+            items.forEach(item => {
                 if (item.fcstDate === todayStr) {
-                    if (item.category === 'TMN') tmn = Math.round(item.fcstValue);
-                    if (item.category === 'TMX') tmx = Math.round(item.fcstValue);
+                    if (item.category === 'TMN') tmn = Math.round(parseFloat(item.fcstValue));
+                    if (item.category === 'TMX') tmx = Math.round(parseFloat(item.fcstValue));
                 }
             });
 
-            const minMaxEl = document.getElementById('min-max-temp');
-            if (minMaxEl) {
-                minMaxEl.textContent = `${tmn}° / ${tmx}°`;
-                minMaxEl.style.display = 'inline';
-            }
-            const divider = document.querySelector('.divider');
-            if (divider) divider.style.display = 'inline';
-
-            // 날씨 상태 업데이트 (초단기예보 우선, 없으면 단기예보 활용)
-            let finalStatus = ultraStatusText;
-            if (!finalStatus) {
-                const skyItem = fcstItems.find(item => item.fcstDate === todayStr && item.fcstTime === currentHourStr && item.category === 'SKY');
-                if (skyItem) {
-                    const skyVal = skyItem.fcstValue;
-                    if (pty === '0') {
-                        if (skyVal === '1') finalStatus = '맑음';
-                        else if (skyVal === '3') finalStatus = '구름많음';
-                        else finalStatus = '흐림';
-                    } else {
-                        const ptyMap = { '1': '비', '2': '비/눈', '3': '눈', '4': '소나기', '5': '빗방울', '6': '진눈깨비', '7': '눈날림' };
-                        finalStatus = ptyMap[pty] || '강수';
-                    }
+            const skyItem = items.find(i => i.fcstDate === todayStr && i.fcstTime === currentHourStr && i.category === 'SKY');
+            if (skyItem) {
+                const sVal = skyItem.fcstValue;
+                if (pty === '0') {
+                    if (sVal === '1') fcstStatusText = '맑음';
+                    else if (sVal === '3') fcstStatusText = '구름많음';
+                    else fcstStatusText = '흐림';
+                } else {
+                    const ptyMap = { '1': '비', '2': '비/눈', '3': '눈', '4': '소나기', '5': '빗방울', '6': '진눈깨비', '7': '눈날림' };
+                    fcstStatusText = ptyMap[pty] || '강수';
                 }
             }
-
-            const statusEl = document.getElementById('weather-status');
-            if (statusEl) {
-                statusEl.textContent = finalStatus || '--';
-            }
         }
+        document.getElementById('min-max-temp').textContent = `${tmn}° / ${tmx}°`;
+        document.getElementById('weather-status').textContent = ultraStatusText || fcstStatusText || '맑음';
 
-        // 3. 에어코리아 데이터 파싱 및 색상 적용
-        let dustStatus = '정보없음';
-        let dustColor = '#2d5016'; // 기본 포레스트 그린
-
+        // 4. 미세먼지
         const dustEl = document.getElementById('fine-dust');
+        if (pollution && pollution.response && pollution.response.body && pollution.response.body.items) {
+            const items = Array.isArray(pollution.response.body.items)
+                ? pollution.response.body.items
+                : [pollution.response.body.items];
 
-        if (pollution && pollution.response && pollution.response.body && pollution.response.body.items && pollution.response.body.items.length > 0) {
-            const pollutionItem = pollution.response.body.items[0];
-            const pm10Grade = pollutionItem.pm10Grade;
-
-            const gradeMap = {
-                '1': { status: '좋음', color: '#3498db' },
-                '2': { status: '보통', color: '#27ae60' },
-                '3': { status: '나쁨', color: '#f39c12' },
-                '4': { status: '매우나쁨', color: '#e74c3c' }
-            };
-
-            if (!pm10Grade || pm10Grade === '-') {
-                if (dustEl) dustEl.textContent = '미세먼지 정보없음';
-            } else if (gradeMap[pm10Grade]) {
-                dustStatus = gradeMap[pm10Grade].status;
-                dustColor = gradeMap[pm10Grade].color;
+            if (items.length > 0) {
+                const item = items[0];
+                const grade = item.pm10Grade;
+                const gradeMap = {
+                    '1': { text: '좋음', color: '#3498db' },
+                    '2': { text: '보통', color: '#27ae60' },
+                    '3': { text: '나쁨', color: '#f39c12' },
+                    '4': { text: '매우나쁨', color: '#e74c3c' }
+                };
+                if (gradeMap[grade]) {
+                    dustEl.textContent = `미세먼지 ${gradeMap[grade].text}`;
+                    dustEl.style.color = gradeMap[grade].color;
+                } else {
+                    dustEl.textContent = '미세먼지 정보없음';
+                }
             }
         }
-
-        if (dustEl) {
-            dustEl.textContent = `미세먼지 ${dustStatus}`;
-            dustEl.style.color = dustColor;
-            dustEl.style.fontWeight = '500';
-            dustEl.style.transition = 'color 0.5s ease';
-        }
-
-        // 아이콘은 더 이상 사용하지 않으므로 숨김 유지
-        const iconEl = document.getElementById('weather-icon');
-        if (iconEl) iconEl.style.display = 'none';
 
     } catch (e) {
         console.error('Error parsing weather data:', e);
