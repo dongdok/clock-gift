@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="iPhone Clock">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1a4d2e">
+    <link rel="manifest" href="manifest.json">
+    <title>iPhone Clock</title>
+    <!-- Google Fonts - 여러 고급스러운 폰트 옵션 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Poppins:wght@200;300;400;500;600&family=Montserrat:wght@200;300;400;500;600&family=Playfair+Display:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Space+Grotesk:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="clock-section">
+                <div class="clock-wrapper">
+                    <div class="time" id="time">
+                        <span class="time-segment">
+                            <span class="flip-card">
+                                <span class="flip-card-inner">
+                                    <span class="flip-card-front" id="hours-tens">0</span>
+                                    <span class="flip-card-back" id="hours-tens-new">0</span>
+                                </span>
+                            </span>
+                        </span>
+                        <span class="time-segment">
+                            <span class="flip-card">
+                                <span class="flip-card-inner">
+                                    <span class="flip-card-front" id="hours-ones">0</span>
+                                    <span class="flip-card-back" id="hours-ones-new">0</span>
+                                </span>
+                            </span>
+                        </span>
+                        <span class="time-separator">:</span>
+                        <span class="time-segment">
+                            <span class="flip-card">
+                                <span class="flip-card-inner">
+                                    <span class="flip-card-front" id="minutes-tens">0</span>
+                                    <span class="flip-card-back" id="minutes-tens-new">0</span>
+                                </span>
+                            </span>
+                        </span>
+                        <span class="time-segment">
+                            <span class="flip-card">
+                                <span class="flip-card-inner">
+                                    <span class="flip-card-front" id="minutes-ones">0</span>
+                                    <span class="flip-card-back" id="minutes-ones-new">0</span>
+                                </span>
+                            </span>
+                        </span>
+                    </div>
+                    <div class="date" id="date">2024년 12월 27일 금요일</div>
+                    <!-- 날씨 섹션 추가 -->
+                    <div class="weather-container" id="weather">
+                        <div class="weather-details">
+                            <span id="current-temp">--°</span>
+                            <span id="weather-status">--</span>
+                            <span id="min-max-temp">--° / --°</span>
+                            <span class="divider">|</span>
+                            <span id="humidity">습도 --%</span>
+                            <span class="divider">|</span>
+                            <span id="fine-dust">미세먼지 --</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 화면 전체를 가로지르는 초침 -->
+            <div class="second-hand"></div>
+        </div>
+    </div>
+
+    <!-- 전체화면 모드 -->
+    <script src="fullscreen.js"></script>
+    <!-- 메인 로직 -->
+    <script src="script.js"></script>
+</body>
+
+</html>
