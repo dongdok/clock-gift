@@ -1,14 +1,16 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
+# LAST_UPDATED: 2026-01-03 20:06
 import os
 import datetime
 import urllib.parse
+import json
 
 app = Flask(__name__)
 CORS(app)
 
-# 환경 변수 설정
+# 환경 변수 설정 (Render 배포 시 Dashboard에서 설정 필수)
 PUBLIC_DATA_SERVICE_KEY = os.environ.get('PUBLIC_DATA_SERVICE_KEY', '')
 NX = os.environ.get('NX', '60')
 NY = os.environ.get('NY', '127')
@@ -22,9 +24,56 @@ def index():
 def serve_static(path):
     return send_from_directory('.', path)
 
+
+# 캐시 설정
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'weather_cache.json')
+
+# 날씨 데이터 캐싱을 위한 전역 변수
+weather_cache = None
+last_cache_time = None
+
+def load_cache():
+    """서버 시작 시 파일에서 캐시 로드"""
+    global weather_cache, last_cache_time
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                weather_cache = data.get('weather')
+                ts = data.get('timestamp')
+                if ts:
+                    last_cache_time = datetime.datetime.fromisoformat(ts)
+                    print(f"> iPhone: 캐시 파일 로드 완료: {last_cache_time}")
+    except Exception as e:
+        print(f"> iPhone: 캐시 파일 로드 실패: {e}")
+
+def save_cache():
+    """캐시를 파일에 저장"""
+    global weather_cache, last_cache_time
+    try:
+        if weather_cache:
+            data = {
+                'weather': weather_cache,
+                'timestamp': last_cache_time.isoformat() if last_cache_time else datetime.datetime.now().isoformat()
+            }
+            with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"> iPhone: 캐시 저장 실패: {e}")
+
 @app.route('/api/weather')
 def proxy_weather():
     """기상청 및 에어코리아 API를 프록시합니다."""
+    global weather_cache, last_cache_time
+    
+    # 캐시 유효 시간 (1시간 - API 호출 최소화)
+    CACHE_DURATION = datetime.timedelta(minutes=60)
+    
+    # 캐시된 데이터가 있고 유효하다면 바로 반환
+    if weather_cache and last_cache_time and (datetime.datetime.now() - last_cache_time < CACHE_DURATION):
+        print(f"> 캐시된 날씨 데이터 반환 (Updated: {last_cache_time.strftime('%H:%M:%S')})")
+        return jsonify(weather_cache)
+
     try:
         # 한국 시간(KST, UTC+9)으로 강제 변환
         now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
@@ -53,17 +102,15 @@ def proxy_weather():
             f"&base_date={ultra_fcst_date}&base_time={ultra_fcst_time}&nx={NX}&ny={NY}"
         )
 
-        # 3. 기상청 단기예보 (오늘의 최고/최저 기온)
-        fcst_base_hours = [2, 5, 8, 11, 14, 17, 20, 23]
-        current_hour = now_kst.hour
-        if current_hour < 2:
+        # 3. 기상청 단기예보 (오늘의 최고/최저 기온 확보용)
+        # 오늘 전체의 최고/최저 기온은 0200시 발표 데이터에만 포함되어 있습니다.
+        if now_kst.hour < 2:
+            # 새벽 2시 이전이면 전날 23시 데이터 사용
             fcst_dt = now_kst - datetime.timedelta(days=1)
-            fcst_date = fcst_dt.strftime('%Y%m%d')
-            fcst_time = "2300"
+            fcst_date, fcst_time = fcst_dt.strftime('%Y%m%d'), "2300"
         else:
-            base_h = max([h for h in fcst_base_hours if h <= current_hour])
-            fcst_date = now_kst.strftime('%Y%m%d')
-            fcst_time = f"{base_h:02d}00"
+            # 그 외에는 오늘 0200시 데이터를 가져와야 오늘 전체의 최저/최고 기온이 나옵니다.
+            fcst_date, fcst_time = now_kst.strftime('%Y%m%d'), "0200"
         
         fcst_url = (
             f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
@@ -93,16 +140,41 @@ def proxy_weather():
             except Exception as e:
                 return {"error": str(e)}
 
-        return jsonify({
-            'ncst': fetch_json(ncst_url),
-            'ultra_fcst': fetch_json(ultra_fcst_url),
-            'fcst': fetch_json(fcst_url),
-            'pollution': fetch_json(pollution_url)
-        })
+        # 데이터 통합 및 부분 업데이트 로직
+        new_data = {}
+        api_configs = [
+            ('ncst', ncst_url),
+            ('ultra_fcst', ultra_fcst_url),
+            ('fcst', fcst_url),
+            ('pollution', pollution_url)
+        ]
+
+        for key, url in api_configs:
+            result = fetch_json(url)
+            # 에러가 없고 유효한 데이터인 경우에만 성공으로 판단
+            if result and not result.get('error'):
+                new_data[key] = result
+                print(f"> iPhone: {key} 데이터 가져오기 성공")
+            elif weather_cache and key in weather_cache:
+                new_data[key] = weather_cache[key]
+                print(f"> iPhone: {key} 데이터 가져오기 실패 - 기존 캐시 유지")
+            else:
+                new_data[key] = result or {"error": "No data"}
+                print(f"> iPhone: {key} 데이터 없음/실패")
+
+        # 업데이트된 데이터로 캐시 갱신
+        weather_cache = new_data
+        weather_cache['version'] = '2.2-stable' # 서버 버전 추적용
+        last_cache_time = datetime.datetime.now()
+        save_cache() # 파일에 저장
+        print("> iPhone: 날씨 데이터 통합 캐시 업데이트 완료")
+
+        return jsonify(weather_cache)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    load_cache() # 시작 시 캐시 로드
     port = int(os.environ.get('PORT', 9001))
     app.run(host='0.0.0.0', port=port)
