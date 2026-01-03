@@ -1,3 +1,4 @@
+// LAST_UPDATED: 2026-01-03 20:06
 // VERSION: 2.3 - Resilience Update (Render Fix)
 document.addEventListener('DOMContentLoaded', () => {
     console.log('--- iPhone Clock Script v2.3 Loaded ---');
